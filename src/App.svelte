@@ -8,6 +8,7 @@
 	import Controls from './components/Controls/index.svelte';
 	import Header from './components/Header/index.svelte';
 	import Modal from './components/Modal/index.svelte';
+	import { gameStore } from './stores/gameStore';
 
 	gameWon.subscribe(won => {
 		if (won) {
@@ -17,6 +18,20 @@
 	});
 
 	onMount(() => {
+		let initialGrid = [
+			[0,0,0,0,0,0,0,0,0],
+			[0,0,0,0,0,0,0,0,0],
+			[0,0,0,0,0,0,0,0,0],
+			[0,0,0,0,0,0,0,0,0],
+			[0,0,0,0,0,0,0,0,0],
+			[0,0,0,0,0,0,0,0,0],
+			[0,0,0,0,0,0,0,0,0],
+			[0,0,0,0,0,0,0,0,0],
+			[0,0,0,0,0,0,0,0,0]
+		];
+
+		gameStore.init(initialGrid);
+
 		let hash = location.hash;
 
 		if (hash.startsWith('#')) {
@@ -32,17 +47,14 @@
 	});
 </script>
 
-<!-- Timer, Menu, etc. -->
 <header>
 	<Header />
 </header>
 
-<!-- Sudoku Field -->
 <section>
 	<Board />
 </section>
 
-<!-- Keyboard -->
 <footer>
 	<Controls />
 </footer>
