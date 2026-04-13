@@ -6,8 +6,7 @@
 	import { settings } from '@sudoku/stores/settings';
 	import { keyboardDisabled } from '@sudoku/stores/keyboard';
 	import { gamePaused } from '@sudoku/stores/game';
-	import { gameStore } from '../../../stores/gameStore';
-
+	import { gameStore } from '../../../stores/gameStore.js';
 	$: hintsAvailable = $hints > 0;
 	$: board = $gameStore?.grid || [];
 

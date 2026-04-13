@@ -1,7 +1,7 @@
 <script>
 	import { BOX_SIZE } from '@sudoku/constants';
 	import { gamePaused } from '@sudoku/stores/game';
-	import { gameStore } from '../../stores/gameStore';
+	import { gameStore } from '../../stores/gameStore.js';
 	import { cursor } from '@sudoku/stores/cursor';
 	import Cell from './Cell.svelte';
 
