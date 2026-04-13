@@ -8,7 +8,7 @@
 	import Controls from './components/Controls/index.svelte';
 	import Header from './components/Header/index.svelte';
 	import Modal from './components/Modal/index.svelte';
-	import { gameStore } from './stores/gameStore';
+	import { gameStore } from './stores/gameStore.js';
 
 	gameWon.subscribe(won => {
 		if (won) {
