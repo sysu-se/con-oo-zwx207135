@@ -2,79 +2,85 @@
 
 ## Review 结论
 
-当前提交更像是“基于多个全局 Svelte store 的状态实现”，而不是把 Sudoku/Game 作为领域核心接入 UI。开始新局、渲染棋盘、输入数字、提示和暂停等流程在静态结构上已经接入 Svelte，但关键的领域建模没有落地：没有真正的 Sudoku/Game 对象、没有历史管理、Undo/Redo 未实现，且用户输入仍绕过统一领域接口直接改 store，因此本次作业的核心目标没有完成。
+当前实现已经出现了“用 custom store 适配领域对象”的正确方向，但并没有把 `Game`/`Sudoku` 真正变成唯一的游戏核心。开局、胜负、分享、暂停等关键流程仍然依赖旧 `@sudoku/*` 状态链，导致真实接入未完成；同时领域对象本身对数独规则的建模过薄，难以支撑业务约束与 UI 一致性。
 
 ## 总体评价
 
 | 维度 | 评价 |
 | --- | --- |
-| OOP | poor |
+| OOP | fair |
 | JS Convention | fair |
-| Sudoku Business | fair |
+| Sudoku Business | poor |
 | OOD | poor |
 
 ## 缺点
 
-### 1. 缺少真正的 Sudoku / Game 领域对象
+### 1. 开始一局游戏的主流程没有真正接入领域对象
 
 - 严重程度：core
-- 位置：src/domain/*（目录缺失）; src/node_modules/@sudoku/sudoku.js:1-84; src/node_modules/@sudoku/game.js:1-57
-- 原因：作业要求的领域层文件 `src/domain/*` 不存在，实际代码中的 `sudoku.js` 只是生成/求解工具函数，`game.js` 只是若干过程式入口；没有对象持有当前 Sudoku、没有 `guess`/校验/外表化/历史演进能力，也没有明确的对象边界。这不符合 OOP，也不符合本次作业要求的领域核心。
+- 位置：src/App.svelte:20-46; src/components/Modal/Types/Welcome.svelte:16-24; src/components/Header/Dropdown.svelte:11-23,41-55; src/stores/gameStore.js:9-20
+- 原因：`App` 只在挂载时用全 0 棋盘初始化一次 `gameStore`，而欢迎弹窗和下拉菜单里的“开始新局/载入题目”仍调用旧的 `@sudoku/game.startNew/startCustom`。结果是题目生成与加载绕过了 `Game`/`Sudoku`，而棋盘渲染却读取 `$gameStore.grid`，这不满足作业要求中的“真实游戏流程由领域对象驱动”。
 
-### 2. Undo / Redo 完全未实现，也没有接入游戏流程
-
-- 严重程度：core
-- 位置：src/components/Controls/ActionBar/Actions.svelte:26-36; src/node_modules/@sudoku/game.js:1-57
-- 原因：UI 上有 Undo/Redo 按钮，但没有 `on:click`，代码库里也没有 history、undo、redo 的实现。作业明确要求 `Game` 管理历史并向 UI 暴露撤销/重做入口，这一块当前是缺失的。
-
-### 3. 用户输入仍然直接操作 store，而不是通过统一的 Game / Sudoku 接口
+### 2. 应用存在两个彼此独立的状态源，游戏生命周期不以当前 Game 为准
 
 - 严重程度：core
-- 位置：src/components/Controls/Keyboard.svelte:10-25; src/components/Controls/ActionBar/Actions.svelte:13-20; src/components/Board/Cell.svelte:39
-- 原因：键盘输入直接调用 `userGrid.set`、`userGrid.applyHint`、`candidates.add/clear`、`cursor.move/set`。这说明 View 层仍在直接编排领域状态，领域逻辑没有成为 UI 的唯一入口，不符合“View 真正消费领域对象”的要求，也削弱了 OOD 中的封装与职责边界。
+- 位置：src/App.svelte:13-17; src/components/Modal/Types/Share.svelte:5-17; src/components/Controls/ActionBar/Timer.svelte:2-9; src/node_modules/@sudoku/stores/game.js:1-20; src/node_modules/@sudoku/stores/grid.js:7-91
+- 原因：棋盘输入和撤销/重做来自 `gameStore`，但胜利判断、分享编码、暂停/恢复、计时等流程仍依赖旧的 `@sudoku` stores。这样 UI 没有单一事实来源：静态阅读可见 `gameWon` 基于旧 `userGrid/invalidCells`，`Share` 也编码旧 `grid`，因此当前领域对象状态无法完整驱动游戏流程。
 
-### 4. 提示功能没有依赖权威解，而是临时对当前用户盘面求解
+### 3. Sudoku 没有建模数独规则与固定格约束
+
+- 严重程度：core
+- 位置：src/domain/Sudoku.js:2-14
+- 原因：`Sudoku` 目前只是二维数组包装器，`guess` 直接写入 `this.grid[row][col] = value`，没有行/列/宫校验，没有数值范围约束，也没有“题面给定数字不可覆盖”和“用户输入”这类业务语义。作业要求中的“提供校验能力”没有落实，数独业务建模明显不足。
+
+### 4. Hint 逻辑被接错，点击提示实际写入 null
 
 - 严重程度：major
-- 位置：src/node_modules/@sudoku/stores/grid.js:80-86
-- 原因：`applyHint` 直接对当前 `userGrid` 调用 `solveSudoku($userGrid)`，说明系统没有保存题目的权威解或可靠快照。这样提示结果会依赖用户当前输入的临时状态；当用户已填错或盘面不一致时，提示的正确性和稳定性都没有领域保证。从数独业务上，hint 应该来自原题对应的唯一解，而不是来自用户当前可变状态。
+- 位置：src/components/Controls/ActionBar/Actions.svelte:13-19; src/domain/Sudoku.js:12-14
+- 原因：`handleHint` 最终调用的是 `gameStore.guess({ ..., value: null })`，这既没有应用提示答案，也把本应为数字网格的领域状态写成了 `null`。这不符合数独“提示”业务，也破坏了 `Sudoku` 的数据不变式。
 
-### 5. Game 模块是全局状态编排器，不是可实例化的游戏会话对象
+### 5. Game 直接暴露可变的 Sudoku，破坏封装与历史一致性
 
 - 严重程度：major
-- 位置：src/node_modules/@sudoku/game.js:13-21; src/node_modules/@sudoku/game.js:28-34; src/node_modules/@sudoku/game.js:39-49; src/node_modules/@sudoku/stores/*.js
-- 原因：`game.js` 通过导入全局 singleton store 来驱动 `difficulty`、`grid`、`cursor`、`timer`、`hints`，还直接操作 `location.hash`。这让“游戏”变成了模块级全局状态，而不是一个可持有、可替换、可测试的会话对象；既不利于复用，也不利于把 UI 与领域解耦。
+- 位置：src/domain/Game.js:12-14; src/domain/Sudoku.js:12-18
+- 原因：`getSudoku()` 返回内部可变对象本身，外部调用者可以绕过 `Game.guess()` 直接对 `Sudoku` 调用 `guess()`，从而跳过 undo/redo 管理。对于聚合根来说，这会让历史栈和真实状态脱节，不是好的 OOD。
 
-### 6. 候选数数据模型过于临时化，JS 习惯与 OOD 都较弱
+### 6. toJSON 暴露了内部可变引用，不是安全的外表化
+
+- 严重程度：major
+- 位置：src/domain/Sudoku.js:20-24; src/domain/Game.js:49-54
+- 原因：`Sudoku.toJSON()` 直接返回 `this.grid`，而不是返回深拷贝后的纯数据快照；`Game.toJSON()` 也沿用了这个结果。调用方如果修改返回值，会从序列化出口反向污染领域对象内部状态，这不符合常见 JS 序列化约定。
+
+### 7. Svelte 适配层过薄，组件契约与新状态模型已经脱节
 
 - 严重程度：minor
-- 位置：src/node_modules/@sudoku/stores/candidates.js:9-27
-- 原因：候选数使用 `"x,y"` 字符串键的普通对象，值是数组，并通过 `delete array[index]` 删除元素。这样会产生稀疏数组，数据结构语义也不明确。对于候选数这种集合语义，更合理的是显式 value object、二维结构或 `Set`，当前写法可用但不够稳健、也不够符合 JS 生态惯例。
+- 位置：src/stores/gameStore.js:15-20; src/components/Board/index.svelte:12-24,34-42; src/components/Board/Cell.svelte:10-17
+- 原因：`gameStore` 只暴露了 `grid/canUndo/canRedo`，但 `Cell` 仍保留 `candidates/conflictingNumber/userNumber/sameArea/sameNumber` 等旧契约；`Board` 里甚至保留了 `isSameArea()` 却没有把结果传给子组件。这说明迁移只做了一半，领域层与视图层的边界没有设计完整。
 
 ## 优点
 
-### 1. 固定题面与玩家作答被分成了两层状态
+### 1. 对输入和读取结果都做了防御性拷贝
 
-- 位置：src/node_modules/@sudoku/stores/grid.js:7-18; src/node_modules/@sudoku/stores/grid.js:44-68
-- 原因：`grid` 保存题面，`userGrid` 保存玩家当前盘面，并在开局/载入时由题面复制出用户盘面。这比把所有状态混在一个二维数组里更符合数独业务，也为“固定数字不可编辑”提供了清晰基础。
+- 位置：src/domain/Sudoku.js:3-10
+- 原因：构造函数复制入参，`getGrid()` 也返回拷贝，避免了外部直接持有内部二维数组引用，这是领域对象最基本但重要的封装措施。
 
-### 2. 冲突检测和胜利判定被抽成了响应式派生状态
+### 2. Undo/Redo 的基本状态迁移清晰
 
-- 位置：src/node_modules/@sudoku/stores/grid.js:93-137; src/node_modules/@sudoku/stores/game.js:7-20
-- 原因：`invalidCells` 和 `gameWon` 都通过 `derived` 从棋盘状态推导出来，避免把这些规则散落在组件模板里。这一层对 Svelte 的响应式消费是自然的，组件只读结果，不自己重算规则。
+- 位置：src/domain/Game.js:16-25,27-39
+- 原因：`guess()` 先保存快照、再清空 redo；`undo()` 和 `redo()` 也分别维护双栈，基本流程正确，说明作者已经把历史管理收敛到 `Game` 内部。
 
-### 3. 开始新局和载入自定义题目至少有集中入口
+### 3. 采用 custom store 作为 Svelte 适配层，方向是对的
 
-- 位置：src/node_modules/@sudoku/game.js:13-34; src/components/Modal/Types/Welcome.svelte:16-24; src/components/Header/Dropdown.svelte:11-23; src/components/Header/Dropdown.svelte:41-55
-- 原因：`startNew` / `startCustom` 统一负责重置 difficulty、grid、cursor、timer、hints，Svelte 侧没有把“开局”逻辑完全散落到多个组件里。这说明作者已经意识到流程入口需要收敛。
+- 位置：src/stores/gameStore.js:4-44
+- 原因：`createGameStore()` 持有领域对象，并通过 `set(...)` 暴露给 Svelte 可订阅快照，这符合题目推荐的 Store Adapter 方案，也比在组件里直接改数组更接近正确架构。
 
-### 4. 棋盘渲染层主要以声明式方式消费 store
+### 4. 部分关键交互已经改为经过 store 调用领域接口
 
-- 位置：src/components/Board/index.svelte:40-52
-- 原因：Board 组件直接根据 `$userGrid`、`$grid`、`$cursor`、`$invalidCells`、`$settings` 渲染每个 Cell 的状态，界面刷新的依赖关系是清晰的，体现了 Svelte store 的基本用法。
+- 位置：src/components/Board/index.svelte:8-10,34-44; src/components/Controls/Keyboard.svelte:22-26; src/components/Controls/ActionBar/Actions.svelte:27-39
+- 原因：棋盘渲染读取 `$gameStore.grid`，数字输入、撤销、重做也通过 `gameStore` 方法进入领域层，说明“View 不直接改数组”的意识已经开始落实。
 
 ## 补充说明
 
-- 本次结论完全基于静态阅读，未运行测试，也未做任何运行时验证。
-- 题目要求审查 `src/domain/*`，但当前仓库中该目录不存在；本次只能将 `src/node_modules/@sudoku/*` 视为实际承担领域职责的代码来审查。
-- 关于提示逻辑、领域边界和 Svelte 接入的判断，均来自代码路径分析，而非实际点击流程验证。
+- 本次结论严格基于静态阅读，按要求未运行测试，也未手动操作页面流程。
+- 关于“开始新局未接入”“胜利/分享与当前棋盘脱节”“Hint 行为错误”等判断，来自对 `src/domain/*`、`src/stores/gameStore.js` 与相关 Svelte 组件调用链的静态比对，不是运行时观测结果。
+- 审查范围只覆盖了 `src/domain/*` 及其关联的 Svelte 接入点；未扩展评价无关目录中的其他实现细节。
